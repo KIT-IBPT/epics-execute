@@ -33,9 +33,7 @@
 #include<stdexcept>
 #include<string>
 
-extern "C" {
 #include <dbLink.h>
-} // extern "C"
 
 #include "RecordAddressOption.h"
 #include "RecordAddressType.h"
