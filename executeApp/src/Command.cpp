@@ -1,6 +1,6 @@
 /*
- * Copyright 2018 aquenos GmbH.
- * Copyright 2018 Karlsruhe Institute of Technology.
+ * Copyright 2018-2021 aquenos GmbH.
+ * Copyright 2018-2021 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -751,6 +751,13 @@ void Command::run() {
         updateResultState(exitCodeSystemError);
         throw e;
       }
+    } else {
+      // If we do not wait for the command execution to complete, we simply call
+      // writeDataSync() without waiting for the returned future. The
+      // writeDataSync() function spawns a background thread that owns the
+      // necessary data, so it is safe to destroy stdinPipe when leaving this
+      // block, even if the execution has not finished yet.
+      stdinPipe.writeDataAsync();
     }
   }
 }
