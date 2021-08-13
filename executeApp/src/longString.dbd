@@ -1,0 +1,2 @@
+device(lsi,INST_IO,devLsiExecute,"execute")
+device(lso,INST_IO,devLsoExecute,"execute")

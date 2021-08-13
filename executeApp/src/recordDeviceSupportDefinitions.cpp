@@ -1,6 +1,6 @@
 /*
- * Copyright 2018 aquenos GmbH.
- * Copyright 2018 Karlsruhe Institute of Technology.
+ * Copyright 2018-2021 aquenos GmbH.
+ * Copyright 2018-2021 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -47,6 +47,14 @@
 #include <dbScan.h>
 #include <devSup.h>
 #include <epicsExport.h>
+#include <epicsVersion.h>
+
+#if EPICS_VERSION > 3 \
+    || (EPICS_VERSION == 3 \
+        && (EPICS_REVISION >= 16 \
+            || (EPICS_REVISION == 15 && EPICS_MODIFICATION >= 1)))
+#  define EXECUTE_EPICS_LONG_STRING_SUPPORTED 1
+#endif
 
 #include "AaiDeviceSupport.h"
 #include "AaoOutputParameterDeviceSupport.h"
@@ -58,6 +66,14 @@
 #include "StringinDeviceSupport.h"
 #include "StringoutStdInDeviceSupport.h"
 #include "errorPrint.h"
+
+#ifdef EXECUTE_EPICS_LONG_STRING_SUPPORTED
+#include <lsiRecord.h>
+#include <lsoRecord.h>
+#include "LsiDeviceSupport.h"
+#include "LsoOutputParameterDeviceSupport.h"
+#include "LsoStdInDeviceSupport.h"
+#endif // EXECUTE_EPICS_LONG_STRING_SUPPORTED
 
 using namespace epics::execute;
 
@@ -112,6 +128,27 @@ struct ExitCodeDeviceSupportFactory {
     return new ExitCodeDeviceSupport<RecordType, ValFieldName>(record, address);
   }
 };
+
+#ifdef EXECUTE_EPICS_LONG_STRING_SUPPORTED
+/**
+ * Factory for creating the device support for an lso record. Depending on the
+ * type specified in the record's address, this factory creates an
+ * LsoStdInDeviceSupport or an OutputParameterDeviceSupport.
+ */
+struct LsoDeviceSupportFactory {
+  static BaseDeviceSupport<::lsoRecord> *createDeviceSupport(
+      ::lsoRecord *record) {
+    auto address = RecordAddress::parse(record->out,
+        RecordAddress::Type::argument | RecordAddress::Type::envVar
+        | RecordAddress::Type::standardInput);
+    if (address.getType() == RecordAddress::Type::standardInput) {
+      return new LsoStdInDeviceSupport(record, address);
+    } else {
+      return new LsoOutputParameterDeviceSupport(record, address);
+    }
+  }
+};
+#endif // EXECUTE_EPICS_LONG_STRING_SUPPORTED
 
 /**
  * Factory for creating the AaoDeviceSupport and StringoutDeviceSupport. These
@@ -232,6 +269,25 @@ template<>
 struct DeviceSupportFactories<::longoutRecord> {
   using Factory = OutputParameterDeviceSupportFactory<::longoutRecord, valField>;
 };
+
+#ifdef EXECUTE_EPICS_LONG_STRING_SUPPORTED
+/**
+ * Template specialzation for the lsi record.
+ */
+template<>
+struct DeviceSupportFactories<::lsiRecord> {
+  using Factory =
+      OutputDeviceSupportFactory<::lsiRecord, LsiDeviceSupport>;
+};
+
+/**
+ * Template specialzation for the lso record.
+ */
+template<>
+struct DeviceSupportFactories<::lsoRecord> {
+  using Factory = LsoDeviceSupportFactory;
+};
+#endif // EXECUTE_EPICS_LONG_STRING_SUPPORTED
 
 /**
  * Template specialzation for the mbbi record.
@@ -438,6 +494,20 @@ epicsExportAddress(dset, devLonginExecute);
  */
 auto devLongoutExecute = deviceSupportStruct<::longoutRecord>();
 epicsExportAddress(dset, devLongoutExecute);
+
+#ifdef EXECUTE_EPICS_LONG_STRING_SUPPORTED
+/**
+ * lsi record type.
+ */
+auto devLsiExecute = deviceSupportStruct<::lsiRecord>();
+epicsExportAddress(dset, devLsiExecute);
+
+/**
+ * lso record type.
+ */
+auto devLsoExecute = deviceSupportStruct<::lsoRecord>();
+epicsExportAddress(dset, devLsoExecute);
+#endif // EXECUTE_EPICS_LONG_STRING_SUPPORTED
 
 /**
  * mbbi record type.

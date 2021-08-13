@@ -115,8 +115,10 @@ Supported records
 -----------------
 
 The execute device supports the `aai`, `aao`, `ao`, `bi`, `bo`, `longin`,
-`longout`, `mbbi`, `mbbo`, `mbbiDirect`, `mbboDirect`, `stringin`, and
-`stringout` records.
+`longout`, `lsi`, `lso`, `mbbi`, `mbbo`, `mbbiDirect`, `mbboDirect`,
+`stringin`, and `stringout` records. The `lsi` and `lso` records are only
+supported when compiling against EPICS Base 3.15.1 or a newer release of
+EPICS Base.
 
 The `DTYP` that has to be specified for all records is `execute`. The format of
 the address that has to be specified in the record's `INP` or `OUT` field
@@ -150,12 +152,12 @@ the first argument to the program. The number `0` cannot be used as (according
 to POSIX conventions) this index is always used for passing the path to the
 exexcutable.
 
-This type of address can be used with the `aao`, `ao`, `bo`, `longout`, `mbbo`,
-`mbboDirect`, and `stringout` records. When using the `aao` record, the element
-type (`FTVL`) must be `CHAR` or `UCHAR`. In case of the `ao` record, the `VAL`
-field (floating point value) is used and no conversion applies. In case of the
-`bo`, `mbbo`, and `mbboDirect` records, the `RVAL` field is used, so conversion
-applies.
+This type of address can be used with the `aao`, `ao`, `bo`, `longout`, `lso`,
+`mbbo`, `mbboDirect`, and `stringout` records. When using the `aao` record, the
+element type (`FTVL`) must be `CHAR` or `UCHAR`. In case of the `ao` record, the
+`VAL` field (floating point value) is used and no conversion applies. In case of
+the `bo`, `mbbo`, and `mbboDirect` records, the `RVAL` field is used, so
+conversion applies.
 
 The argument is set when the respective record is processed and is then going to
 be used the next time the command is run. It is possible to have more than one
@@ -205,12 +207,12 @@ the value from the record takes precedence.
 The `<variable name>` must only contain alphanumeric (ASCII) characters and the
 underscore.
 
-This type of address can be used with the `aao`, `ao`, `bo`, `longout`, `mbbo`,
-`mbboDirect`, and `stringout` records. When using the `aao` record, the element
-type (`FTVL`) must be `CHAR` or `UCHAR`. In case of the `ao` record, the `VAL`
-field (floating point value) is used and no conversion applies. In case of the
-`bo`, `mbbo`, and `mbboDirect` records, the `RVAL` field is used, so conversion
-applies.
+This type of address can be used with the `aao`, `ao`, `bo`, `longout`, `lso`,
+`mbbo`, `mbboDirect`, and `stringout` records. When using the `aao` record, the
+element type (`FTVL`) must be `CHAR` or `UCHAR`. In case of the `ao` record, the
+`VAL` field (floating point value) is used and no conversion applies. In case of
+the `bo`, `mbbo`, and `mbboDirect` records, the `RVAL` field is used, so
+conversion applies.
 
 The environment variable is set when the respective record is processed and is
 then going to be used the next time the command is run. It is possible to have
@@ -246,21 +248,24 @@ type of `stdin`:
 
 `@<command ID> stdin null-terminated`
 
-This type of address can be used with the `aao` and `stringout` records. When
-using the `aao` record, the element type (`FTVL`) must be `CHAR` or `UCHAR`.
-Using the `aao` record is the only means of passing any data that may contain
-null bytes. Such data cannot be set using the `stringout` record and it cannot
-be passed as an argument or an environment variable either.
+This type of address can be used with the `aao`, `lso`, and `stringout` records.
+When using the `aao` record, the element type (`FTVL`) must be `CHAR` or
+`UCHAR`. Using the `aao` record is the only means of passing any data that may
+contain null bytes. Such data cannot be set using the `lso` or `stringout`
+records, and it cannot be passed as an argument or an environment variable
+either.
 
 The `null-terminated` option is optional. It only has an effect when using the
 `aao` record. The effect of this option is that only data before the first
 null byte is passed to the standard input, just like it is done for environment
-variables and arguments or when using the `stringout` record.
+variables and arguments or when using the `lso` or `stringout` records.
 
 The data is only made available to the standard input once the corresponding
-record has been processed. However, setting `PINI` to `YES` is only usefule when
-using the `stringout` record because there is no proper way for setting an `aao`
-record's value as part of the record definition.
+record has been processed. However, setting `PINI` to `YES` is mainly useful
+when using the `stringout` record because there is no proper way for setting
+the `VAL` field of an `aao` or `lso` record’s value as part of the record
+definition (you can use an `lso` record’s `DOL` field with a constant JSON link
+though).
 
 Example record definition for this address type:
 
@@ -325,12 +330,12 @@ respectively:
 
 `@<command ID> stderr`
 
-This type of address can be used with the `aai` and `stringin` records. When
-using the `aai` record, the element type (`FTVL`) must be `CHAR` or `UCHAR`.
-Using the `aai` record is the only means of (completely) retrieving data that
-may contain null bytes. Such data cannot be retrieved using the `stringin`
-record (any data following the first null byte is going to be discarded in this
-case).
+This type of address can be used with the `aai`, `lsi` and `stringin` records.
+When using the `aai` record, the element type (`FTVL`) must be `CHAR` or
+`UCHAR`. Using the `aai` record is the only means of (completely) retrieving
+data that may contain null bytes. Such data cannot be retrieved using the
+`lsi` or `stringin` records (any data following the first null byte is going to
+be discarded in this case).
 
 Processing of the record must be triggered after the program has terminated. The
 easiest way of achieving this is placing a forward link from the record
