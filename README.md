@@ -244,11 +244,18 @@ type of `stdin`:
 
 `@<command ID> stdin`
 
+`@<command ID> stdin null-terminated`
+
 This type of address can be used with the `aao` and `stringout` records. When
 using the `aao` record, the element type (`FTVL`) must be `CHAR` or `UCHAR`.
 Using the `aao` record is the only means of passing any data that may contain
 null bytes. Such data cannot be set using the `stringout` record and it cannot
 be passed as an argument or an environment variable either.
+
+The `null-terminated` option is optional. It only has an effect when using the
+`aao` record. The effect of this option is that only data before the first
+null byte is passed to the standard input, just like it is done for environment
+variables and arguments or when using the `stringout` record.
 
 The data is only made available to the standard input once the corresponding
 record has been processed. However, setting `PINI` to `YES` is only usefule when

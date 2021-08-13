@@ -1,6 +1,6 @@
 /*
- * Copyright 2018 aquenos GmbH.
- * Copyright 2018 Karlsruhe Institute of Technology.
+ * Copyright 2018-2021 aquenos GmbH.
+ * Copyright 2018-2021 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -76,6 +76,14 @@ public:
   void processRecord() {
     char *buffer = static_cast<char *>(getRecord()->bptr);
     std::size_t bufferLength = getRecord()->nord;
+    // If the null-terminated flag is set, only use the bytes before the first
+    // null-byte.
+    if (this->getRecordAddress().getOptions()
+        & RecordAddressOption::nullTerminated) {
+      // The string stored inside the record's buffer might not be
+      // null-terminated, so we cannot use std::strlen.
+      bufferLength = std::find(buffer, buffer + bufferLength, 0) - buffer;
+    }
     getCommand()->setStdInBuffer(
         std::vector<char>(buffer, buffer + bufferLength));
   }

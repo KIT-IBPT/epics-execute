@@ -1,6 +1,6 @@
 /*
- * Copyright 2018 aquenos GmbH.
- * Copyright 2018 Karlsruhe Institute of Technology.
+ * Copyright 2018-2021 aquenos GmbH.
+ * Copyright 2018-2021 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -73,7 +73,15 @@ public:
       }
       break;
     case RecordAddress::Type::standardError:
+      break;
     case RecordAddress::Type::standardInput:
+      // The additional options are optional, but if they are present, they must
+      // be separated by a separator.
+      if (!isEndOfString()) {
+        separator();
+        foundOptions = options(foundType);
+      }
+      break;
     case RecordAddress::Type::standardOutput:
       break;
     }
@@ -197,6 +205,11 @@ private:
     case RecordAddress::Type::run:
       if (accept("wait")) {
         return RecordAddress::Option::wait;
+      }
+      break;
+    case RecordAddress::Type::standardInput:
+      if (accept("null-terminated")) {
+        return RecordAddress::Option::nullTerminated;
       }
       break;
     default:

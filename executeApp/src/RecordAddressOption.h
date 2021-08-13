@@ -1,6 +1,6 @@
 /*
- * Copyright 2018 aquenos GmbH.
- * Copyright 2018 Karlsruhe Institute of Technology.
+ * Copyright 2018-2021 aquenos GmbH.
+ * Copyright 2018-2021 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -48,7 +48,18 @@ enum class RecordAddressOption {
    * with the run type. It is only allowed if the command's wait flag is set
    * as well.
    */
-  wait = 1
+  wait = 1,
+
+  /**
+   * Treat an array of characters as a zero-terminated string. This option may
+   * only be used in combination with the standard input type. In that case, it
+   * will ensure that only data before the first null-byte is sent to the
+   * command's standard input. This is the default behavior for string (lso or
+   * stringout) records, but for the aao record, all data (according to the
+   * length indicated by the NORD field) is used unless this flag is set
+   * explicitly.
+   */
+  nullTerminated = 2,
 
 };
 
