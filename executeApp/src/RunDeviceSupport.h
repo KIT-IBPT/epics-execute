@@ -30,6 +30,7 @@
 #ifndef EPICS_EXEC_RUN_DEVICE_SUPPORT_H
 #define EPICS_EXEC_RUN_DEVICE_SUPPORT_H
 
+#include <atomic>
 #include <chrono>
 #include <future>
 #include <stdexcept>
@@ -75,6 +76,7 @@ public:
    */
   RunDeviceSupport(RecordType *record, RecordAddress const &address)
       : BaseDeviceSupport<RecordType>(record, address),
+      runComplete(false),
       suspendProcessingUntilCommandTerminated(address.getOptions()
           & RecordAddressOption::wait) {
     if (this->suspendProcessingUntilCommandTerminated
@@ -105,9 +107,20 @@ public:
     // If this method is called again because a command terminated, we simply
     // want to complete the processing.
     if (asyncExecutionFuture.valid()) {
-      if (asyncExecutionFuture.wait_for(std::chrono::duration<int>::zero())
-          != std::future_status::ready) {
-        // If the future is not ready yet, this means that the record has been
+      // We check the run-complete flag instead of checking whether the result
+      // for the future is available. We have to do this because this method
+      // might be called from the callback that is scheduled by the code that
+      // provides the result of the future, and if this callback is executed
+      // more quickly than the scheduling thread can finish, it can happen that
+      // the future's result is not available yet when we arrive here. If we
+      // simply checked for the result being available, we would return, but
+      // this method would not be called again because the scheduled callback
+      // would already have been executed.
+      // We can use a relaxed memory order, because calling the future's get
+      // method will provide sufficient synchronization. Here, we are only
+      // interested in the state of the flag.
+      if (!runComplete.load(std::memory_order_relaxed)) {
+        // If the run is not complete yet, this means that the record has been
         // processed again before the command finished. This can only happen if
         // we did not set PACT to 1 (setting PACT ensures that record processing
         // can only be triggered by us). We simple restore the value that
@@ -122,6 +135,13 @@ public:
       // The get method throws an exception if the command's run method threw an
       // exception.
       try {
+        // Due to scheduling, the call to get() might block for a short moment
+        // if this method has been called from the callback. This can happen if
+        // the scheduling of the callback happens faster than the the thread
+        // that scheduled it can quit. This is okay, because nothing blocking
+        // happens in that thread after scheduling the callback, so we can
+        // simply wait for this short amount of time (this isn't worse than
+        // acquiring a rarely contested mutex).
         asyncExecutionFuture.get();
       } catch (...) {
         ::recGblSetSevr(record, WRITE_ALARM, MAJOR_ALARM);
@@ -131,16 +151,33 @@ public:
     }
     auto command = this->getCommand();
     if (command->isWait()) {
+      // We have to clear the run-complete flag, so that it will only be set
+      // one the run has actually completed. The flag is only checked from
+      // within this method, and calls of this method are synchronized through
+      // other means, so we can use a relaxed memory order.
+      runComplete.store(false, std::memory_order_relaxed);
       asyncExecutionFuture = std::async(std::launch::async, [this]() {
         try {
           this->getCommand()->run();
         } catch (...) {
           // We have to schedule another processing of the record, even if the
-          // run method threw an exception.
+          // run method threw an exception. Before scheduling the callback, we
+          // set the run-complete flag. This ensures that we will wait for the
+          // result of the run operation to become available within the
+          // callback. We use exchange instead of store, so that the call to
+          // callbackRequestProcessCallback cannot be reordered before the
+          // action of setting the flag.
+        this->runComplete.exchange(true, std::memory_order_acq_rel);
           ::callbackRequestProcessCallback(&this->processCallback,
               priorityMedium, this->getRecord());
           throw;
         }
+        // Before scheduling the callback, we set the run-complete flag. This
+        // ensures that we will wait for the result of the run operation to
+        // become available within the callback. We use exchange instead of
+        // store, so that the call to callbackRequestProcessCallback cannot be
+        // reordered before the action of setting the flag.
+        this->runComplete.exchange(true, std::memory_order_acq_rel);
         ::callbackRequestProcessCallback(&this->processCallback, priorityMedium,
             this->getRecord());
       });
@@ -165,6 +202,7 @@ private:
 
   std::future<void> asyncExecutionFuture;
   ::CALLBACK processCallback;
+  std::atomic<bool> runComplete;
   bool suspendProcessingUntilCommandTerminated;
 
 };
