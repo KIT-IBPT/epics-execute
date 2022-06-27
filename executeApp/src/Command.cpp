@@ -1,6 +1,6 @@
 /*
- * Copyright 2018-2021 aquenos GmbH.
- * Copyright 2018-2021 Karlsruhe Institute of Technology.
+ * Copyright 2018-2022 aquenos GmbH.
+ * Copyright 2018-2022 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -248,7 +248,9 @@ public:
     // them more than once).
     if (!valid) {
       throw std::logic_error(
-          "Only one of transferReadFd and writeDataAsync must be called in each process and each method must only be called once.");
+          "Only one of transferReadFd, writeDataAsync, and "
+          "writeDataAsyncAndWaitForPid must be called in each process and each "
+          "method must only be called once.");
     }
     if (buffer.empty()) {
       throw std::logic_error(
@@ -265,30 +267,11 @@ public:
   }
 
   std::future<void> writeDataAsync() {
-    // This method is only called on the write side and only after forking. This
-    // means that we can close the read FD. We use some flags in order to
-    // ensure that the calling code actually uses this method correctly
-    // (does not call both transferReadFd and writeDataAsync or call either of
-    // them more than once).
-    if (!valid) {
-      throw std::logic_error(
-          "Only one of transferReadFd and writeDataAsync must be called in each process and each method must only be called once.");
-    }
-    if (buffer.empty()) {
-      // If the buffer is empty, we do not have a pipe and can simply return.
-      std::promise<void> promise;
-      promise.set_value();
-      return promise.get_future();
-    }
-    valid = false;
-    ::close(this->readFd);
-    this->readFd = -1;
-    auto future = std::async(std::launch::async, writeData,
-        std::move(this->buffer), this->writeFd);
-    // The write FD is now owned (and will be closed) by the new thread, so we
-    // set it to -1.
-    this->writeFd = -1;
-    return future;
+    return writeDataAsyncInternal(false, 0);
+  }
+
+  std::future<void> writeDataAsyncAndWaitForPid(pid_t pid) {
+    return writeDataAsyncInternal(true, pid);
   }
 
 private:
@@ -304,7 +287,8 @@ private:
   PreFilledPipe &operator=(PreFilledPipe const&) = delete;
   PreFilledPipe &operator=(PreFilledPipe &&) = delete;
 
-  static void writeData(std::vector<char> buffer, int fd) {
+  static void writeData(
+      std::vector<char> buffer, int fd, bool waitForPid, pid_t pid) {
     std::size_t totalBytesWritten = 0;
     ::ssize_t bytesWritten;
     while ((bytesWritten = ::write(fd, buffer.data() + totalBytesWritten,
@@ -315,8 +299,14 @@ private:
         break;
       }
     }
+    // If we are supposed to wait for a child process, we do this now.
+    if (waitForPid) {
+      ::waitpid(pid, nullptr, 0);
+    }
     // If there was an error, we throw an exception.
     if (bytesWritten == -1) {
+      // We construct the exception before calling close(), because close()
+      // might reset errno.
       std::system_error e(std::error_code(errno, std::system_category()),
           "write() failed");
       ::close(fd);
@@ -325,6 +315,44 @@ private:
       // Otherwise, we simply close the FD because we wrote all data.
       ::close(fd);
     }
+  }
+
+  std::future<void> writeDataAsyncInternal(bool waitForPid, pid_t pid) {
+    // This method is only called on the write side and only after forking. This
+    // means that we can close the read FD. We use some flags in order to
+    // ensure that the calling code actually uses this method correctly
+    // (does not call both transferReadFd and writeDataAsync or call either of
+    // them more than once).
+    if (!valid) {
+      throw std::logic_error(
+          "Only one of transferReadFd, writeDataAsync, and "
+          "writeDataAsyncAndWaitForPid must be called in each process and each "
+          "method must only be called once.");
+    }
+    valid = false;
+    if (buffer.empty() and !waitForPid) {
+      // If the buffer is empty, we did not create a pipe, so we do not have to
+      // close any file descriptors. However, we still have to wait for the
+      // child process, if requested.
+      if (waitForPid) {
+        return std::async(std::launch::async, [pid]() {
+              ::waitpid(pid, nullptr, 0);
+        });
+      }
+      // If we do not have to wait for a process, we are done and can simply
+      // return a future that has already completed.
+      std::promise<void> promise;
+      promise.set_value();
+      return promise.get_future();
+    }
+    ::close(this->readFd);
+    this->readFd = -1;
+    auto future = std::async(std::launch::async, writeData,
+        std::move(this->buffer), this->writeFd, waitForPid, pid);
+    // The write FD is now owned (and will be closed) by the new thread, so we
+    // set it to -1.
+    this->writeFd = -1;
+    return future;
   }
 
 };
@@ -753,11 +781,16 @@ void Command::run() {
       }
     } else {
       // If we do not wait for the command execution to complete, we simply call
-      // writeDataSync() without waiting for the returned future. The
-      // writeDataSync() function spawns a background thread that owns the
-      // necessary data, so it is safe to destroy stdinPipe when leaving this
-      // block, even if the execution has not finished yet.
-      stdinPipe.writeDataAsync();
+      // writeDataAsyncAndWaitForPid() without waiting for the returned future.
+      // The writeDataAsyncAndWaitForPid function spawns a background thread
+      // that owns the necessary data, so it is safe to destroy stdinPipe when
+      // leaving this block, even if the execution has not finished yet.
+      // Not that we use writeDataAsyncAndWaitForPid() instead of
+      // writeDataAsync() here. As we do not wait in this thread for the child
+      // process to terminate, we have to do this in the spawned thread.
+      // Otherwise, the child process would never be reaped after terminating
+      // and stay as a zombie process until the whole IOC terminates.
+      stdinPipe.writeDataAsyncAndWaitForPid(childPid);
     }
   }
 }
