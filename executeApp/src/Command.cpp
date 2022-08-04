@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
-#include <future>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
@@ -628,6 +627,15 @@ void Command::run() {
     stdinBuffer = this->stdinBuffer;
     stderrCapacity = this->stderrCapacity;
     stdoutCapacity = this->stdoutCapacity;
+    // We want to clean up futures that have been created by earlier calls to
+    // this method and that are ready now. We cannot remove futures that are not
+    // ready yet, because this operation might block.
+    pendingFutures.remove_if([](std::future<void> const &future) {
+      return (
+        !future.valid()
+        || (future.wait_for(std::chrono::seconds::zero())
+          != std::future_status::timeout));
+    });
   }
   // The pointers stored in the following two vectors are only valid as long as
   // the original vectors exist and have not been changed. This is okay, because
@@ -790,7 +798,22 @@ void Command::run() {
       // process to terminate, we have to do this in the spawned thread.
       // Otherwise, the child process would never be reaped after terminating
       // and stay as a zombie process until the whole IOC terminates.
-      stdinPipe.writeDataAsyncAndWaitForPid(childPid);
+      auto future = stdinPipe.writeDataAsyncAndWaitForPid(childPid);
+      // The destructor of std::future may block when the future has been
+      // created by std::async, the shared state is not ready yet, and the
+      // future represents the last reference to the shared state.
+      // In our case, the first and third criteria is always fulfilled, which
+      // means that the destructor may block (and in fact does block on at least
+      // two platforms that were tested) when the command has not finished
+      // running yet, which is exactly what we are trying to avoid when the wait
+      // flag is not set.
+      // For this reason, we append the future to a list, from which it will be
+      // removed when the run() method is called again and the shared state of
+      // the future is ready.
+      {
+        std::lock_guard<std::mutex> lock(mutex);
+        pendingFutures.push_front(std::move(future));
+      }
     }
   }
 }

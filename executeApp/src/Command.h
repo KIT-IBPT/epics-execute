@@ -1,6 +1,6 @@
 /*
- * Copyright 2018 aquenos GmbH.
- * Copyright 2018 Karlsruhe Institute of Technology.
+ * Copyright 2018-2022 aquenos GmbH.
+ * Copyright 2018-2022 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -31,6 +31,8 @@
 #define EPICS_EXEC_COMMAND_H
 
 #include <cstdint>
+#include <forward_list>
+#include <future>
 #include <map>
 #include <mutex>
 #include <string>
@@ -183,6 +185,7 @@ private:
   std::map<int, std::string> arguments;
   std::map<std::string, std::string> envVars;
   mutable std::mutex mutex;
+  std::forward_list<std::future<void>> pendingFutures;
   bool running;
   std::vector<char> stderrBuffer;
   std::size_t stderrCapacity;
