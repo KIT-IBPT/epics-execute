@@ -30,6 +30,7 @@
 #include <regex>
 #include <stdexcept>
 #include <string>
+#include <cstring>
 
 extern "C" {
 #include <epicsExport.h>
