@@ -27,10 +27,10 @@
  * of the GNU LGPL version 3 or newer.
  */
 
+#include <cstring>
 #include <regex>
 #include <stdexcept>
 #include <string>
-#include <cstring>
 
 extern "C" {
 #include <epicsExport.h>
