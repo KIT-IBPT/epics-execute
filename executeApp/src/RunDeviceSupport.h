@@ -1,6 +1,6 @@
 /*
- * Copyright 2018-2022 aquenos GmbH.
- * Copyright 2018-2022 Karlsruhe Institute of Technology.
+ * Copyright 2018-2023 aquenos GmbH.
+ * Copyright 2018-2023 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -50,7 +50,7 @@ namespace execute {
 /**
  * Device support for records triggering the command to be run.
  *
- * This device support ignores the record's value and always run the command.
+ * This device support ignores the record's value and always runs the command.
  *
  * If the command's wait flag is set, the record is processed asynchronously
  * and only finishes processing after the process created for the command has
@@ -152,7 +152,7 @@ public:
     auto command = this->getCommand();
     if (command->isWait()) {
       // We have to clear the run-complete flag, so that it will only be set
-      // one the run has actually completed. The flag is only checked from
+      // once the run has actually completed. The flag is only checked from
       // within this method, and calls of this method are synchronized through
       // other means, so we can use a relaxed memory order.
       runComplete.store(false, std::memory_order_relaxed);
