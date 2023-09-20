@@ -33,6 +33,7 @@
 #include <memory>
 #include <set>
 #include <stdexcept>
+#include <string>
 
 #include "CommandRegistry.h"
 #include "RecordAddress.h"
