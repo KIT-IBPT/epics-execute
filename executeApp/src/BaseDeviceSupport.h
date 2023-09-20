@@ -1,6 +1,6 @@
 /*
- * Copyright 2018 aquenos GmbH.
- * Copyright 2018 Karlsruhe Institute of Technology.
+ * Copyright 2018-2023 aquenos GmbH.
+ * Copyright 2018-2023 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -146,8 +146,10 @@ BaseDeviceSupport<RecordType>::BaseDeviceSupport(RecordType *record,
     RecordAddress const &address, bool noConvert) : address(address),
     command(CommandRegistry::getInstance().getCommand(address.getCommandId())),
     noConvert(noConvert), record(record) {
-  throw std::runtime_error(
-    std::string("Command \"") + address.getCommandId() + "\" is not defined.");
+  if (!this->command) {
+    throw std::runtime_error(
+      std::string("Command \"") + address.getCommandId() + "\" is not defined.");
+  }
 }
 
 } // namespace execute
