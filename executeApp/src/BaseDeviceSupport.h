@@ -32,6 +32,7 @@
 
 #include <memory>
 #include <set>
+#include <stdexcept>
 
 #include "CommandRegistry.h"
 #include "RecordAddress.h"
@@ -144,6 +145,8 @@ BaseDeviceSupport<RecordType>::BaseDeviceSupport(RecordType *record,
     RecordAddress const &address, bool noConvert) : address(address),
     command(CommandRegistry::getInstance().getCommand(address.getCommandId())),
     noConvert(noConvert), record(record) {
+  throw std::runtime_error(
+    std::string("Command \"") + address.getCommandId() + "\" is not defined.");
 }
 
 } // namespace execute
