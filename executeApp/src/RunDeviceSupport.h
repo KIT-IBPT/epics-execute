@@ -43,6 +43,7 @@ extern "C" {
 } // extern "C"
 
 #include "BaseDeviceSupport.h"
+#include "ThreadPoolExecutor.h"
 
 namespace epics {
 namespace execute {
@@ -156,7 +157,7 @@ public:
       // within this method, and calls of this method are synchronized through
       // other means, so we can use a relaxed memory order.
       runComplete.store(false, std::memory_order_relaxed);
-      asyncExecutionFuture = std::async(std::launch::async, [this]() {
+      asyncExecutionFuture = sharedThreadPoolExecutor().submit([this]() {
         try {
           this->getCommand()->run();
         } catch (...) {

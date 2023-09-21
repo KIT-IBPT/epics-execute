@@ -33,6 +33,7 @@ endif
 execute_SRCS += Command.cpp
 execute_SRCS += CommandRegistry.cpp
 execute_SRCS += RecordAddress.cpp
+execute_SRCS += ThreadPoolExecutor.cpp
 execute_SRCS += errorPrint.cpp
 execute_SRCS += recordDeviceSupportDefinitions.cpp
 execute_SRCS += registrar.cpp
