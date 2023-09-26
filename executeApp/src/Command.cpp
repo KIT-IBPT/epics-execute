@@ -36,6 +36,7 @@
 
 extern "C" {
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
@@ -647,6 +648,15 @@ void Command::run() {
   // objects.
   AccumulatingPipe stderrPipe(stderrCapacity);
   AccumulatingPipe stdoutPipe(stdoutCapacity);
+  // The sysconf function is not guaranteed to be async-signal-safe since
+  // POSIX.1-2008 (in previous versions this guarantee existed), so we call
+  // sysconf before calling fork.
+  int maxFd = ::sysconf(_SC_OPEN_MAX);
+  if (maxFd == -1) {
+    throw std::system_error(
+        std::error_code(errno, std::system_category()),
+        "sysconf(_SC_OPEN_MAX) failed");
+  }
   auto childPid = ::fork();
   if (childPid == 0) {
     // This code runs in the newly created child process.
@@ -656,15 +666,26 @@ void Command::run() {
     // flag.
     // We deliberately ignore the return value because it is not a problem if
     // the specified file descriptor was not open.
-    ::close(0);
-    ::close(1);
-    ::close(2);
+    ::close(STDIN_FILENO);
+    ::close(STDOUT_FILENO);
+    ::close(STDERR_FILENO);
+    // If we do not use a pipe for all of the three standard file descriptors,
+    // we want to bind them to /dev/null. This ensures that the respective file
+    // descriptor is not accidentally bound to some other file, which could
+    // have unintended effects when the executed program tries to use them (e.g.
+    // by calling printf).
     // If there is a pipe for stdin, we have to change the file descriptor
     // number so that it is actually used as stdin.
     if (!stdinBuffer.empty()) {
       int stdinFd = stdinPipe.transferReadFd();
-      if (stdinFd != 0) {
-        ::dup2(stdinFd, 0);
+      if (stdinFd != STDIN_FILENO) {
+        ::dup2(stdinFd, STDIN_FILENO);
+        ::close(stdinFd);
+      }
+    } else {
+      int stdinFd = ::open("/dev/null", O_RDONLY);
+      if (stdinFd != -1 && stdinFd != STDIN_FILENO) {
+        ::dup2(stdinFd, STDIN_FILENO);
         ::close(stdinFd);
       }
     }
@@ -672,17 +693,44 @@ void Command::run() {
     // descriptor numbers so that they are actually used as stdout and stderr.
     if (stdoutCapacity) {
       int stdoutFd = stdoutPipe.transferWriteFd();
-      if (stdoutFd != 1) {
-        ::dup2(stdoutFd, 1);
+      if (stdoutFd != STDOUT_FILENO) {
+        ::dup2(stdoutFd, STDOUT_FILENO);
+        ::close(stdoutFd);
+      }
+    } else {
+      int stdoutFd = ::open("/dev/null", O_WRONLY);
+      if (stdoutFd != -1 && stdoutFd != STDOUT_FILENO) {
+        ::dup2(stdoutFd, STDOUT_FILENO);
         ::close(stdoutFd);
       }
     }
     if (stderrCapacity) {
       int stderrFd = stderrPipe.transferWriteFd();
-      if (stderrFd != 2) {
-        ::dup2(stderrFd, 2);
+      if (stderrFd != STDERR_FILENO) {
+        ::dup2(stderrFd, STDERR_FILENO);
         ::close(stderrFd);
       }
+    } else {
+      int stderrFd = ::open("/dev/null", O_WRONLY);
+      if (stderrFd != -1 && stderrFd != STDERR_FILENO) {
+        ::dup2(stderrFd, STDERR_FILENO);
+        ::close(stderrFd);
+      }
+    }
+    // We close all unused file descriptors. We do not want the child process to
+    // have access to any file descriptors that do not have the close-on-exec
+    // flag set. First of all, this might give the child process access to
+    // things that it should not be able to access, but more importantly due to
+    // this process being multi-threaded, there is no reliable way of always
+    // setting the close-on-exec flag, and leaking pipes intended for other
+    // child processes into the wrong child process can cause the pipe not to be
+    // closed when the child process quits, causing a thread that is trying to
+    // read from that pipe to hang longer than necessary.
+    for (int fd = 0; fd <= maxFd; ++fd) {
+      if (fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+        continue;
+      }
+      ::close(fd);
     }
     // The EPICS IOC blocks a few signals. We do not want these signals to be
     // blocked for the child process, so we unblock all signals. If sigfillset
@@ -717,7 +765,7 @@ void Command::run() {
     childProcessStatus->execveStatus = execveStatus;
     childProcessStatus->errorNumber = errno;
     // Now we kill the child process.
-    _exit(-1);
+    ::_exit(-1);
   } else if (childPid == -1) {
     // The call to fork failed and no child process was created.
     // errno may be a preprocessor macro, so we cannot use the qualified form.
